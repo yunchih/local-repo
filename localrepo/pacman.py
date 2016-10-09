@@ -87,6 +87,21 @@ class Pacman:
 		Pacman._run_as_root([Pacman.PACMAN, '-Rs'] + list(set(pkgs)))
 
 	@staticmethod
+	def check_from_aur(pkgs):
+		''' Checks whether packages are from AUR '''
+		res = {}
+		for pkg in pkgs:
+			# Try to find `pkg` in official repositories
+			cmd = [Pacman.PACMAN, '-Ssq', pkg]
+			try:
+				check_output(cmd)
+				res[pkg] = False
+			except CalledProcessError as e:
+				res[pkg] = True
+
+		return res
+
+	@staticmethod
 	def check_deps(pkgs):
 		''' Checks for unresolved dependencies '''
 		cmd = [Pacman.PACMAN, '-T'] + pkgs

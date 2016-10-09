@@ -6,7 +6,7 @@ from localrepo.pacman import Pacman
 from localrepo.repo import Repo
 from localrepo.aur import Aur
 from localrepo.log import Log, BuildLog, PkgbuildLog
-from localrepo.utils import Msg, LocalRepoError
+from localrepo.utils import Msg, LocalRepoError, Humanizer
 from localrepo.config import Config
 
 class LocalRepo:
@@ -98,7 +98,17 @@ class LocalRepo:
 	@staticmethod
 	def _install_deps(names):
 		''' Installs missing dependencies '''
-		Msg.info(_('Need following packages as dependencies:\n[{0}]').format(', '.join(names)))
+		aurs, officials = [], names
+		Msg.info(_('Need following packages as dependencies:'))
+		if Config.get('check-deps-from-aur', True):
+			aur_checks = Pacman.check_from_aur(names)
+			aurs = list(filter(lambda k: aur_checks[k], aur_checks))
+			officials = list(filter(lambda k: not aur_checks[k], aur_checks))
+			for i in [("AUR", aurs), ("Official", officials)]:
+				if i[1]:
+					Msg.info(_('{0} repository: [{1}]'.format(i[0], ', '.join(i[1]))))
+		else:
+			Msg.info(_('[{0}]'.format(', '.join(names))))
 
 		if not Msg.ask(_('Install?')):
 			if Msg.ask(_('Try without installing dependencies?')):
@@ -108,7 +118,9 @@ class LocalRepo:
 			LocalRepo.shutdown(1)
 
 		try:
-			Pacman.install(names, as_deps=True)
+			if aurs:
+				LocalRepo.aur_add(aurs)
+			Pacman.install(officials, as_deps=True)
 			return True
 		except LocalRepoError as e:
 			LocalRepo.error(e)
@@ -195,12 +207,15 @@ class LocalRepo:
 		for e in errors:
 			Msg.error(e)
 
+		pkgs_uri = []
 		for pkg in pkgs.values():
 			if not force and pkg['name'] in LocalRepo._repo:
 				Msg.error(_('Package is already in the repo: {0}').format(pkg['name']))
-				LocalRepo.shutdown(1)
+			else:
+				pkgs_uri.append(pkg['uri'])
 
-			LocalRepo.add([pkg['uri']], force=force)
+		if pkgs_uri:
+			LocalRepo.add(pkgs_uri, force=force)
 
 	@staticmethod
 	def aur_upgrade():
